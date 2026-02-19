@@ -1,14 +1,231 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hello World</title>
-  <link href='/style.css' rel='stylesheet'>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>은퇴 계산기 (MVP)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <h1>Hello, world!</h1>
-  <button onclick="console.log('hello');">Press me</button>
-  <script defer type="text/javascript" src="/main.js"></script>
+<body class="bg-gray-50">
+  <div class="max-w-5xl mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-4">은퇴 계산기 (정적 MVP)</h1>
+
+    <div class="bg-white rounded-xl shadow p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <label class="block">
+        <span class="text-sm text-gray-700">현재 나이</span>
+        <input id="ageNow" type="number" value="40" class="mt-1 w-full border rounded px-3 py-2" />
+      </label>
+
+      <label class="block">
+        <span class="text-sm text-gray-700">초기 투자금 (만원)</span>
+        <input id="initialInvestment" type="number" value="0" class="mt-1 w-full border rounded px-3 py-2" />
+      </label>
+
+      <label class="block">
+        <span class="text-sm text-gray-700">월 투자금 (만원)</span>
+        <input id="monthlyInvest" type="number" value="100" class="mt-1 w-full border rounded px-3 py-2" />
+      </label>
+
+      <label class="block">
+        <span class="text-sm text-gray-700">예상 연 수익률</span>
+        <select id="annualReturn" class="mt-1 w-full border rounded px-3 py-2">
+          <option value="8">S&P 500 (8%)</option>
+          <option value="10">SCHD (10%)</option>
+        </select>
+      </label>
+
+      <label class="block">
+        <span class="text-sm text-gray-700">국민연금 개시나이</span>
+        <input id="npsStartAge" type="number" value="65" class="mt-1 w-full border rounded px-3 py-2" />
+      </label>
+
+      <label class="block">
+        <span class="text-sm text-gray-700">국민연금 월 수령액 (만원)</span>
+        <input id="npsMonthly" type="number" value="150" class="mt-1 w-full border rounded px-3 py-2" />
+      </label>
+
+      <label class="block">
+        <span class="text-sm text-gray-700">퇴직/개인연금 개시나이</span>
+        <input id="retStartAge" type="number" value="55" class="mt-1 w-full border rounded px-3 py-2" />
+      </label>
+
+      <label class="block">
+        <span class="text-sm text-gray-700">퇴직/개인연금 월 수령액 (만원)</span>
+        <input id="retMonthly" type="number" value="100" class="mt-1 w-full border rounded px-3 py-2" />
+      </label>
+
+      <label class="block">
+        <span class="text-sm text-gray-700">목표 생활비 (월, 만원 / 선택)</span>
+        <input id="monthlyExpense" type="number" value="250" class="mt-1 w-full border rounded px-3 py-2" />
+      </label>
+
+      <div class="md:col-span-3 flex gap-2 mt-2">
+        <button id="btnCalc" class="px-4 py-2 rounded bg-black text-white">계산</button>
+        <button id="btnSave" class="px-4 py-2 rounded border">로컬 저장</button>
+        <button id="btnLoad" class="px-4 py-2 rounded border">불러오기</button>
+      </div>
+
+      <p id="summary" class="md:col-span-3 text-sm text-gray-700"></p>
+    </div>
+
+    <div class="mt-6 bg-white rounded-xl shadow overflow-auto max-h-[500px]">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-100 text-gray-700 sticky top-0 z-10">
+          <tr>
+            <th class="text-left p-3">년도</th>
+            <th class="text-left p-3">나이</th>
+            <th class="text-right p-3">연말자산(만원)</th>
+            <th class="text-right p-3">연 투자(만원)</th>
+            <th class="text-right p-3">연금(연,만원)</th>
+            <th class="text-right p-3">연금-생활비(연,만원)</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function getInput() {
+    const now = new Date();
+    const thisYear = now.getFullYear();
+
+    const ageNow = Number($("ageNow").value);
+    return {
+      thisYear,
+      ageNow,
+      monthlyInvest: Number($("monthlyInvest").value) * 10000,
+      annualReturn: Number($("annualReturn").value) / 100,
+      initialInvestment: Number($("initialInvestment").value) * 10000,
+      npsStartAge: Number($("npsStartAge").value),
+      npsMonthly: Number($("npsMonthly").value) * 10000,
+      retStartAge: Number($("retStartAge").value),
+      retMonthly: Number($("retMonthly").value) * 10000,
+      monthlyExpense: Number($("monthlyExpense").value) * 10000,
+      maxAge: 90
+    };
+  }
+
+  function simulateYears(input) {
+    // 단순화: 연 단위로 계산(연 투자 후 연 수익률 적용)
+    // 더 정밀하게 하려면 월 단위로 바꿀 수 있음(구조는 그대로)
+    let asset = input.initialInvestment;
+    const rows = [];
+    let retireYearByPension = null;
+
+    const npsStartYear = input.thisYear + (input.npsStartAge - input.ageNow);
+    const retStartYear = input.thisYear + (input.retStartAge - input.ageNow);
+
+    for (let y = input.thisYear; y <= input.thisYear + (input.maxAge - input.ageNow); y++) {
+      const age = input.ageNow + (y - input.thisYear);
+
+      const investYear = input.monthlyInvest * 12;
+
+      const pensionMonthly =
+        (y >= npsStartYear ? input.npsMonthly : 0) +
+        (y >= retStartYear ? input.retMonthly : 0);
+
+      const pensionYear = pensionMonthly * 12;
+      const expenseYear = input.monthlyExpense * 12;
+      const surplusYear = pensionYear - expenseYear;
+
+      // 은퇴 판정(연금만으로 생활비 커버)
+      if (retireYearByPension === null && pensionMonthly >= input.monthlyExpense && input.monthlyExpense > 0) {
+        retireYearByPension = y;
+      }
+
+      // 자산 업데이트(매년 투자 + 수익률)
+      asset = (asset + investYear) * (1 + input.annualReturn);
+
+      rows.push({
+        year: y,
+        age,
+        endAsset: asset,
+        investYear,
+        pensionYear,
+        surplusYear
+      });
+    }
+
+    return { rows, retireYearByPension };
+  }
+
+  function formatWon(n) {
+    // 만원 단위 표시(원 단위로 들어오므로 /10000)
+    const man = Math.round(n / 10000);
+    return man.toLocaleString("ko-KR");
+  }
+
+  function render(result, input) {
+    const tbody = $("tbody");
+    tbody.innerHTML = "";
+
+    for (const r of result.rows) {
+      const tr = document.createElement("tr");
+      tr.className = "border-t";
+      tr.innerHTML = `
+        <td class="p-3">${r.year}</td>
+        <td class="p-3">${r.age}</td>
+        <td class="p-3 text-right">${formatWon(r.endAsset)}</td>
+        <td class="p-3 text-right">${formatWon(r.investYear)}</td>
+        <td class="p-3 text-right">${formatWon(r.pensionYear)}</td>
+        <td class="p-3 text-right">${formatWon(r.surplusYear)}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    const sum = $("summary");
+    if (result.retireYearByPension) {
+      const ageAt = input.ageNow + (result.retireYearByPension - input.thisYear);
+      sum.textContent = `연금만으로 생활비를 커버하는 첫 해: ${result.retireYearByPension}년 (만 ${ageAt}세)`;
+    } else {
+      sum.textContent = `연금만으로 생활비를 커버하는 시점이 설정 범위 내에 없습니다. (생활비 입력/연금 개시나이 확인)`;
+    }
+  }
+
+  $("btnCalc").addEventListener("click", () => {
+    const input = getInput();
+    const result = simulateYears(input);
+    render(result, input);
+  });
+
+  // 서버 없이도 저장/불러오기 (나중에 서버로 그대로 옮길 JSON)
+  $("btnSave").addEventListener("click", () => {
+    const input = getInput();
+    // For select, save the value which is the percentage rate.
+    const rawInput = { ...input, annualReturn: $("annualReturn").value };
+    localStorage.setItem("retire_mvp_input", JSON.stringify(rawInput));
+    alert("로컬 저장 완료");
+  });
+
+  $("btnLoad").addEventListener("click", () => {
+    const s = localStorage.getItem("retire_mvp_input");
+    if (!s) return alert("저장된 값이 없습니다.");
+
+    const input = JSON.parse(s);
+    $("ageNow").value = input.ageNow;
+    $("monthlyInvest").value = input.monthlyInvest / 10000;
+    // For select, the stored value is the percentage rate.
+    $("annualReturn").value = input.annualReturn;
+    $("initialInvestment").value = input.initialInvestment / 10000;
+    $("npsStartAge").value = input.npsStartAge;
+    $("npsMonthly").value = input.npsMonthly / 10000;
+    $("retStartAge").value = input.retStartAge;
+    $("retMonthly").value = input.retMonthly / 10000;
+    $("monthlyExpense").value = input.monthlyExpense / 10000;
+
+    const result = simulateYears(getInput());
+    render(result, getInput());
+  });
+
+  // 첫 로드 시 자동 계산
+  (() => {
+    const input = getInput();
+    const result = simulateYears(input);
+    render(result, input);
+  })();
+</script>
 </body>
 </html>
